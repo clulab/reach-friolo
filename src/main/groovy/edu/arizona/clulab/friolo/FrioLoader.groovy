@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 import org.apache.logging.log4j.*;
 
 import org.elasticsearch.client.*
+// import org.elasticsearch.action.admin.indices.mapping.put.*
 import org.elasticsearch.action.bulk.*
 import org.elasticsearch.action.index.*
 import org.elasticsearch.node.*
@@ -12,11 +13,13 @@ import org.elasticsearch.node.*
 /**
  * Class to load REACH results documents in JSON format into an ElasticSearch engine.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Initial merge of previous transformer/loader programs.
+ *   Last Modified: Recreate index and mapping on each load.
  */
 class FrioLoader {
 
   static final Logger log = LogManager.getLogger(FrioLoader.class.getName());
+
+  static final String ES_MAPPING_PATH = "/es-mapping.json"
 
   BulkProcessor bulker
   Client client
@@ -59,6 +62,8 @@ class FrioLoader {
       .setConcurrentRequests(concurrents)
       .build()
     }
+
+    recreateIndexAndMapping(client, indexName, typeName)
   }
 
 
@@ -73,6 +78,34 @@ class FrioLoader {
       bulker.add(indexReq)
       return true
     }
+  }
+
+
+  /** Delete any index with the given name and recreate it.
+   *  NB: THIS DELETES ALL DATA IN THE INDEX! */
+  def recreateIndexAndMapping (client, indexName, typeName) {
+    def indexOps = client.admin().indices()
+
+    // delete and recreate index
+    def exists = indexOps.prepareExists(indexName).execute().actionGet().isExists()
+    if (exists)
+      indexOps.prepareDelete(indexName).execute().actionGet()
+    indexOps.prepareCreate(indexName).execute().actionGet()
+
+    // load out custom mapping from the mapping file
+    def mappingJson = readMappingFile(client)
+    if (mappingJson) {
+      // this sets our custom mapping for our specific type in the index just created above
+      indexOps.preparePutMapping(indexName).setSource(mappingJson).setType(typeName).execute().actionGet()
+    }
+  }
+
+  /** Read the JSON mapping for the ES index from a file on the classpath. */
+  def readMappingFile (client) {
+    def inStream = this.getClass().getResourceAsStream(ES_MAPPING_PATH);
+    if (inStream)
+      return inStream.getText()             // read mapping text
+    return null                             // signal failure to read
   }
 
 

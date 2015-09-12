@@ -1,0 +1,67 @@
+{
+  "conn": {
+    "properties": {
+      "docId": {
+        "type": "string"
+      },
+      "loc": {
+        "properties": {
+          "sentence": {
+            "type": "string"
+          }
+        }
+      },
+      "o": {
+        "properties": {
+          "eId": {
+            "type": "string"
+          },
+          "eNs": {
+            "type": "string"
+          },
+          "eText": {
+            "type": "string"
+          },
+          "eType": {
+            "type": "string"
+          }
+        }
+      },
+      "p": {
+        "properties": {
+          "evSubtype": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "sign": {
+            "type": "string"
+          },
+          "subtype": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "s": {
+        "properties": {
+          "eId": {
+            "type": "string"
+          },
+          "eNs": {
+            "type": "string"
+          },
+          "eText": {
+            "type": "string"
+          },
+          "eType": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
