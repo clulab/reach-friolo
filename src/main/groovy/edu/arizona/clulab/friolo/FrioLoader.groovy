@@ -13,13 +13,14 @@ import org.elasticsearch.node.*
 /**
  * Class to load REACH results documents in JSON format into an ElasticSearch engine.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Recreate index and mapping on each load.
+ *   Last Modified: Add load of custom settings file.
  */
 class FrioLoader {
 
   static final Logger log = LogManager.getLogger(FrioLoader.class.getName());
 
   static final String ES_MAPPING_PATH = "/es-mapping.json"
+  static final String ES_SETTINGS_PATH = "/es-settings.json"
 
   BulkProcessor bulker
   Client client
@@ -86,23 +87,31 @@ class FrioLoader {
   def recreateIndexAndMapping (client, indexName, typeName) {
     def indexOps = client.admin().indices()
 
-    // delete and recreate index
+    // try to load our custom settings from a settings config file:
+    def settingsJson = readJsonConfigFile(ES_SETTINGS_PATH)
+
+    // check for and delete index, if it exists:
     def exists = indexOps.prepareExists(indexName).execute().actionGet().isExists()
     if (exists)
       indexOps.prepareDelete(indexName).execute().actionGet()
-    indexOps.prepareCreate(indexName).execute().actionGet()
 
-    // load out custom mapping from the mapping file
-    def mappingJson = readMappingFile(client)
+    // re-create the index with or without additional settings:
+    if (settingsJson)
+      indexOps.prepareCreate(indexName).setSettings(settingsJson).execute().actionGet()
+    else
+      indexOps.prepareCreate(indexName).execute().actionGet()
+
+    // load our custom mappings from a mappings config file:
+    def mappingJson = readJsonConfigFile(ES_MAPPING_PATH)
     if (mappingJson) {
       // this sets our custom mapping for our specific type in the index just created above
       indexOps.preparePutMapping(indexName).setSource(mappingJson).setType(typeName).execute().actionGet()
     }
   }
 
-  /** Read the JSON mapping for the ES index from a file on the classpath. */
-  def readMappingFile (client) {
-    def inStream = this.getClass().getResourceAsStream(ES_MAPPING_PATH);
+  /** Read the JSON ES configuration file, on the classpath, and return its text content. */
+  def readJsonConfigFile (filepath) {
+    def inStream = this.getClass().getResourceAsStream(filepath);
     if (inStream)
       return inStream.getText()             // read mapping text
     return null                             // signal failure to read
