@@ -1,10 +1,23 @@
 {
   "analysis" : {
-    "analyzer":{
-      "lowerWS":{
-        "type":"custom",
-        "tokenizer":"whitespace",
-        "filter":["lowercase"]
+    "tokenizer": {
+      "underscore_tokenizer": {
+        "type": "pattern",
+        "pattern": "_"
+      }
+    },
+    "analyzer": {
+      "lowerWS": {
+        "type": "custom",
+        "tokenizer": "whitespace",
+        "filter": ["lowercase"]
+      }
+    },
+    "analyzer": {
+      "PMfilename": {
+        "type": "custom",
+        "tokenizer": "underscore_tokenizer",
+        "filter": ["lowercase"]
       }
     }
   }
