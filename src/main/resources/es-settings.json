@@ -1,0 +1,11 @@
+{
+  "analysis" : {
+    "analyzer":{
+      "lowerWS":{
+        "type":"custom",
+        "tokenizer":"whitespace",
+        "filter":["lowercase"]
+      }
+    }
+  }
+}
