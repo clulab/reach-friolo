@@ -8,12 +8,13 @@ import org.elasticsearch.client.*
 // import org.elasticsearch.action.admin.indices.mapping.put.*
 import org.elasticsearch.action.bulk.*
 import org.elasticsearch.action.index.*
+import org.elasticsearch.common.settings.*
 import org.elasticsearch.node.*
 
 /**
  * Class to load REACH results documents in JSON format into an ElasticSearch engine.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Add load of custom settings file.
+ *   Last Modified: Fix client discovery settings.
  */
 class FrioLoader {
 
@@ -35,9 +36,18 @@ class FrioLoader {
     this.settings = settings
     indexName = settings.get('indexName', 'results')
     typeName = settings.get('typeName', 'conn')
-
     def clusterName = settings.get('clusterName', 'reach')
-    node = NodeBuilder.nodeBuilder().clusterName(clusterName).client(true).node()
+
+    def esSettings = ImmutableSettings.settingsBuilder()
+    esSettings.put('node.name', 'Friolo')
+    esSettings.put('discovery.zen.ping.multicast.enabled', false)
+    esSettings.put('discovery.zen.ping.unicast.hosts', 'localhost')
+    esSettings.build()
+
+    if (settings.verbose)
+      log.info("(FrioLoader): cluster=${clusterName}, index=${indexName}, type=${typeName}")
+
+    node = NodeBuilder.nodeBuilder().settings(esSettings).data(false).clusterName(clusterName).client(true).node()
     client = node.client()
 
     // initialize bulk loading, if requested
