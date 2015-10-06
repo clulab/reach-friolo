@@ -13,7 +13,7 @@ import groovy.util.CliBuilder
  * a format, ingestable by ElasticSearch, for searching entity and event interconnections.
  *
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Add option to map input filename to PMC ID.
+ *   Last Modified: Make file processing return basename for error handling.
  */
 class Friolo implements FilenameFilter {
 
@@ -128,9 +128,14 @@ class Friolo implements FilenameFilter {
   }
 
   /** Map the given PubMed file basename to a PubMed Central ID or return the basename. */
-  def filenameToPmcId (filename) {
-    def base = filename.substring(0,filename.indexOf('.'))
-    return PMC_FILE_MAP.get(base, base)
+  def basenameToPmcId (basename) {
+    // def basename = filename.substring(0,filename.indexOf('.'))
+    return PMC_FILE_MAP.get(basename, basename)
+  }
+
+  /** Return the basename of the given filename string. */
+  def fileBasename (filename) {
+    return filename.substring(0,filename.indexOf('.'))
   }
 
   /** Return true if the given file is a directory, readable and, optionally, writeable. */
@@ -167,17 +172,20 @@ class Friolo implements FilenameFilter {
     return cnt
   }
 
-  /** Return a map of document ID to a map of document type to filename for the
-      files in the given directory. [docId => [ docType => filename, ...]] */
+  /** Return a map of document ID to a map containing the document basename
+   *  and a map of document type to filename for the files in the given directory.
+   *    [docId => [ 'basename': basename, 'tfMap' => [docType => filename, ...]]]
+   */
   def mapDocsToFiles (directory) {
     def fileList = directory.list(this) as List
-    def groupByIdMap = fileList.groupBy({ filename -> filenameToPmcId(filename) })
-    return groupByIdMap.collectEntries { docId, groupedFilesList ->
+    def groupByBasename = fileList.groupBy({ fname -> fileBasename(fname) })
+    return groupByBasename.collectEntries { basename, groupedFilesList ->
+      def docId = basenameToPmcId(basename)
       def tfMap = groupedFilesList.collectEntries { filename ->
         def docType = extractDocType(filename)
         return (docType ? [(docType):filename] : [:])
       }
-      return (tfMap ? [(docId):tfMap] : [:])
+      return ((docId && tfMap) ? [(docId): ['basename': basename, 'tfMap': tfMap]] : [:])
     }
   }
 
@@ -197,8 +205,8 @@ class Friolo implements FilenameFilter {
     log.trace("(Friolo.processFiles): xformer=${frioFormer}, dir=${directory}")
     int cnt = 0
     def docs2Files = mapDocsToFiles(directory)
-    docs2Files.each { docId, tfMap ->
-      def validTfMap = validateFiles(directory, docId, tfMap)
+    docs2Files.each { docId, docInfoMap ->
+      def validTfMap = validateFiles(directory, docInfoMap.basename, docInfoMap.tfMap)
       if (validTfMap) {
         cnt += frioFormer.convert(directory, docId, validTfMap)
       }
@@ -210,8 +218,8 @@ class Friolo implements FilenameFilter {
    *  given input directory. Null is returned on failure if any named file is not found, not
    *  a file, or not readable, or if the map does not contain the expected number of files.
    */
-  def validateFiles (directory, docId, tfMap) {
-    log.trace("(Friolo.validateFiles): inDir=${directory}, docId=${docId}, tfMap=${tfMap}")
+  def validateFiles (directory, docBasename, tfMap) {
+    log.trace("(Friolo.validateFiles): inDir=${directory}, docBase=${docBasename}, tfMap=${tfMap}")
     def validTfMap = tfMap.collectEntries { docType, filename ->
       if (goodFile(directory, filename))    // if file valid
         return [(docType):filename]         // collect the entry
@@ -224,7 +232,7 @@ class Friolo implements FilenameFilter {
     def expected = PART_TYPES.size()        // expect a certain number of files for each doc
     if (validTfMap.size() != expected) {
       if (VERBOSE)
-        log.error("${docId} does not have the expected number (${expected}) of JSON part files.")
+        log.error("${docBasename} does not have the expected number (${expected}) of JSON part files.")
       return null                           // failed validation: ignore this doc
     }
     return validTfMap                       // return the validated type-to-file map
