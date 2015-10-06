@@ -7,7 +7,7 @@ import groovy.json.*
  * Class to transform and load REACH results files, in Fries Output JSON format, into a
  * format more suitable for searching entity and event interconnections via ElasticSearch.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Initial merge of previous transformer/loader programs.
+ *   Last Modified: Trivial variable rename for consistency.
  */
 class FrioFormer {
 
@@ -19,9 +19,9 @@ class FrioFormer {
   public FrioLoader LOADER
 
   /** Public constructor taking a map of ingest option and an ElasticSearch loader class. */
-  public FrioFormer (options, frioloader) {
-    log.trace("(FrioFormer.init): options=${options}, frioloader=${frioloader}")
-    LOADER = frioloader
+  public FrioFormer (options, frioLoader) {
+    log.trace("(FrioFormer.init): options=${options}, frioLoader=${frioLoader}")
+    LOADER = frioLoader
   }
 
 

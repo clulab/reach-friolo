@@ -1,6 +1,7 @@
 package edu.arizona.clulab.friolo
 
 import java.io.*
+import java.util.zip.GZIPInputStream
 
 import org.apache.commons.cli.*
 import org.apache.logging.log4j.*
@@ -12,14 +13,18 @@ import groovy.util.CliBuilder
  * a format, ingestable by ElasticSearch, for searching entity and event interconnections.
  *
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Initial merge of previous transformer/loader programs.
+ *   Last Modified: Add option to map input filename to PMC ID.
  */
 class Friolo implements FilenameFilter {
 
   static final Logger log = LogManager.getLogger(Friolo.class.getName());
 
-  public static final def PART_TYPES = [ 'entities', 'events', 'sentences' ]
-  // public static final def FILE_TYPES = [ 'entities.json', 'events.json', 'sentences.json' ]
+  static final def PART_TYPES = [ 'entities', 'events', 'sentences' ]
+  // static final def FILE_TYPES = [ 'entities.json', 'events.json', 'sentences.json' ]
+
+  static final String PMC_FILE_PATH = "/PMC-files_list.tsv.gz"
+
+  static Map PMC_FILE_MAP = [:]
 
   public boolean VERBOSE = false
 
@@ -27,7 +32,7 @@ class Friolo implements FilenameFilter {
   /** Main program entry point. */
   public static void main (String[] args) {
     // read, parse, and validate command line arguments
-    def usage = 'friolo [-h] [-b N] [-c clusterName] [-i indexName] [-t typeName] directory'
+    def usage = 'friolo [-h] [-b N] [-m] [-c clusterName] [-i indexName] [-t typeName] directory'
     def cli = new CliBuilder(usage: usage)
     cli.width = 100                         // increase usage message width
     cli.with {
@@ -38,7 +43,8 @@ class Friolo implements FilenameFilter {
       c(longOpt:  'cluster',  'ElasticSearch cluster name (default: reach).', args: 1)
       i(longOpt:  'index',    'ElasticSearch index name (default: results).', args: 1)
       t(longOpt:  'type',     'ElasticSearch type name (default: conn).', args: 1)
-      v(longOpt:  'verbose',   'Run in verbose mode (default: non-verbose).')
+      m(longOpt:  'map',      'Map input filenames to PMC IDs (default: no mapping).')
+      v(longOpt:  'verbose',  'Run in verbose mode (default: non-verbose).')
     }
 
     def options = cli.parse(args)           // parse command line
@@ -62,7 +68,17 @@ class Friolo implements FilenameFilter {
                      'bulkLoad':    options.hasOption('b') ? true : false,
                      'bulkConcurrency': (options.b ?: 0) as Integer,
                      'bulkWaitMinutes': 1,
+                     'mapFilenames': options.m ?: false,
                      'verbose': options.v ?: false ]
+
+    // if mapping filenames, then load the table of filenames and ids
+    if (options.m) {
+      if (options.v)
+        log.info("(Friolo.main): Reading filename mapping file: ${PMC_FILE_PATH}...")
+      def mCnt = friolo.loadPmcFileMap()
+      if (options.v)
+        log.info("(Friolo.main): Read ${mCnt} filename mappings.")
+    }
 
     // create instance of loader class, passing it to new instance of transformer class:
     def frioLoader = new FrioLoader(settings)
@@ -111,6 +127,12 @@ class Friolo implements FilenameFilter {
       return null                           // signal failure
   }
 
+  /** Map the given PubMed file basename to a PubMed Central ID or return the basename. */
+  def filenameToPmcId (filename) {
+    def base = filename.substring(0,filename.indexOf('.'))
+    return PMC_FILE_MAP.get(base, base)
+  }
+
   /** Return true if the given file is a directory, readable and, optionally, writeable. */
   def goodDirectory (File dir, writeable=false) {
     return (dir && dir.isDirectory() && dir.canRead() && (!writeable || dir.canWrite()))
@@ -130,20 +152,34 @@ class Friolo implements FilenameFilter {
     return (fyl && fyl.isFile() && fyl.canRead()) ? fyl : null
   }
 
+  /** Load the filename to PMC ID map from disk and return a count of the mappings read. */
+  def loadPmcFileMap () {
+    def cnt = 0
+    def pmcStream = this.getClass().getResourceAsStream(PMC_FILE_PATH);
+    def inSR = new InputStreamReader(new GZIPInputStream(pmcStream), 'UTF8')
+    inSR.eachLine { line ->
+      def fields = line.split('\\t')
+      if (fields.size() == 2) {
+        PMC_FILE_MAP.put(fields[0], fields[1])
+        cnt += 1
+      }
+    }
+    return cnt
+  }
+
   /** Return a map of document ID to a map of document type to filename for the
       files in the given directory. [docId => [ docType => filename, ...]] */
   def mapDocsToFiles (directory) {
     def fileList = directory.list(this) as List
-    def docMap = fileList.groupBy({ s -> s.substring(0,s.indexOf('.')) })
-    return docMap.collectEntries { docId, docFiles ->
-      def tfMap = docFiles.collectEntries { filename ->
+    def groupByIdMap = fileList.groupBy({ filename -> filenameToPmcId(filename) })
+    return groupByIdMap.collectEntries { docId, groupedFilesList ->
+      def tfMap = groupedFilesList.collectEntries { filename ->
         def docType = extractDocType(filename)
         return (docType ? [(docType):filename] : [:])
       }
-      return (tfMap ? [docId, tfMap] : [:])
+      return (tfMap ? [(docId):tfMap] : [:])
     }
   }
-
 
   /** Process the files in all subdirectories of the given top-level directory. */
   def processDirs (frioFormer, topDirectory) {
