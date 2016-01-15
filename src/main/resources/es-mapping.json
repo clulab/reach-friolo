@@ -13,7 +13,7 @@
           }
         }
       },
-      "o": {
+      "a": {
         "properties": {
           "eId": {
             "type": "string",
@@ -63,7 +63,7 @@
           }
         }
       },
-      "s": {
+      "t": {
         "properties": {
           "eId": {
             "type": "string",

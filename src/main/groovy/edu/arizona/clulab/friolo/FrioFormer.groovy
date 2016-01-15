@@ -7,7 +7,7 @@ import groovy.json.*
  * Class to transform and load REACH results files, in Fries Output JSON format, into a
  * format more suitable for searching entity and event interconnections via ElasticSearch.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Trivial variable rename for consistency.
+ *   Last Modified: Convert to agent/predicate/patient.
  */
 class FrioFormer {
 
@@ -97,15 +97,15 @@ class FrioFormer {
 
     // handle activation or regulation
     if ((evType == 'activation') || (evType == 'regulation')) {
-      def object = getControlled(tjMap, event)
-      if (object && object?.evSubtype) {    // kludge: retrieve the controlled events subtype
-        predMap['evSubtype'] = object.evSubtype // transfer it to the predicate where it belongs
-        object.remove('evSubtype')          // delete it from the object where it was stashed
+      def patient = getControlled(tjMap, event)
+      if (patient && patient?.evSubtype) {    // kludge: retrieve the controlled events subtype
+        predMap['evSubtype'] = patient.evSubtype // transfer it to the predicate where it belongs
+        patient.remove('evSubtype')          // delete it from the patient where it was stashed
       }
-      def subjects = getControllers(tjMap, event)
-      subjects.each { subj ->
-        def evMap = ['docId': docId, 'p': predMap, 's': subj, 'loc': locMap]
-        if (object) evMap['o'] = object
+      def agents = getControllers(tjMap, event)
+      agents.each { agent ->
+        def evMap = ['docId': docId, 'p': predMap, 'a': agent, 'loc': locMap]
+        if (patient) evMap['t'] = patient
         newEvents << evMap
       }
     }
@@ -115,9 +115,9 @@ class FrioFormer {
       def themes = getThemes(tjMap, event)
       if (themes.size() == 2) {
         newEvents << ['docId': docId, 'p': predMap, 'loc': locMap,
-                      's': themes[0], 'o': themes[1]]
+                      'a': themes[0], 't': themes[1]]
         newEvents << ['docId': docId, 'p': predMap, 'loc': locMap,
-                      's': themes[1], 'o': themes[0]]
+                      'a': themes[1], 't': themes[0]]
       }
     }
 
@@ -251,7 +251,7 @@ class FrioFormer {
       def ctrldEntity = getThemes(tjMap, ctrldEvent)?.getAt(0) // should be just 1 theme arg
       if (!ctrldEntity) return null               // bad nesting: exit out now
       if (ctrldEvent?.subtype)                    // stash the controlled event subtype
-        ctrldEntity['evSubtype'] = ctrldEvent.subtype // and return it in the object
+        ctrldEntity['evSubtype'] = ctrldEvent.subtype // and return it in the entity
       return ctrldEntity                    // return the nested entity
     }
     else                                    // else it is a directly controlled entity
