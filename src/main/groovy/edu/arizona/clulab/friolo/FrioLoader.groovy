@@ -1,5 +1,6 @@
 package edu.arizona.clulab.friolo
 
+import java.net.InetAddress;
 import java.util.concurrent.TimeUnit
 
 import org.apache.logging.log4j.*;
@@ -9,12 +10,13 @@ import org.elasticsearch.client.*
 import org.elasticsearch.action.bulk.*
 import org.elasticsearch.action.index.*
 import org.elasticsearch.common.settings.*
-import org.elasticsearch.node.*
+import org.elasticsearch.common.transport.*
+import org.elasticsearch.client.transport.*
 
 /**
  * Class to load REACH results documents in JSON format into an ElasticSearch engine.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Fix client discovery settings.
+ *   Last Modified: Redo for ES 2.3.2.
  */
 class FrioLoader {
 
@@ -25,30 +27,24 @@ class FrioLoader {
 
   BulkProcessor bulker
   Client client
-  String indexName
-  String typeName
-  Node node
   Map settings
 
   /** Public constructor taking a map of ingest option. */
   public FrioLoader (Map settings) {
     log.trace("(FrioLoader.init): settings=${settings}")
-    this.settings = settings
-    indexName = settings.get('indexName', 'results')
-    typeName = settings.get('typeName', 'conn')
-    def clusterName = settings.get('clusterName', 'reach')
 
-    def esSettings = ImmutableSettings.settingsBuilder()
-    esSettings.put('node.name', 'Friolo')
-    esSettings.put('discovery.zen.ping.multicast.enabled', false)
+    this.settings = settings                // save incoming settings in global variable:
+    if (settings.verbose)
+      log.info("(FrioLoader): cluster=${settings.clusterName}, index=${settings.indexName}, type=${settings.typeName}")
+
+    def esSettings = Settings.settingsBuilder()
+    esSettings.put('client.transport.sniff', false)
+    esSettings.put('cluster.name', settings.get('clusterName', 'reach'))
     esSettings.put('discovery.zen.ping.unicast.hosts', 'localhost')
     esSettings.build()
 
-    if (settings.verbose)
-      log.info("(FrioLoader): cluster=${clusterName}, index=${indexName}, type=${typeName}")
-
-    node = NodeBuilder.nodeBuilder().settings(esSettings).data(false).clusterName(clusterName).client(true).node()
-    client = node.client()
+    client = TransportClient.builder().settings(esSettings).build()
+    client.addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName("localhost"), 9300))
 
     // initialize bulk loading, if requested
     // by default: bulkActions=1000, bulkSize=5mb, no flushInterval, concurrentRequests=1
@@ -74,14 +70,14 @@ class FrioLoader {
       .build()
     }
 
-    recreateIndexAndMapping(client, indexName, typeName)
+    recreateIndexAndMapping(client)
   }
 
 
   /** Add the given document to the established index & type with the given ID .*/
   def addToIndex (String aDoc) {
     log.trace("(FrioLoader.addToIndex): aDoc=${aDoc}")
-    IndexRequest indexReq = new IndexRequest(indexName, typeName).source(aDoc)
+    IndexRequest indexReq = new IndexRequest(settings.indexName, settings.typeName).source(aDoc)
     if (!bulker) {
       return client.index(indexReq).get()
     }
@@ -94,8 +90,10 @@ class FrioLoader {
 
   /** Delete any index with the given name and recreate it.
    *  NB: THIS DELETES ALL DATA IN THE INDEX! */
-  def recreateIndexAndMapping (client, indexName, typeName) {
+  def recreateIndexAndMapping (client) {
     def indexOps = client.admin().indices()
+
+    def indexName = settings.indexName      // for convenience only
 
     // try to load our custom settings from a settings config file:
     def settingsJson = readJsonConfigFile(ES_SETTINGS_PATH)
@@ -115,7 +113,7 @@ class FrioLoader {
     def mappingJson = readJsonConfigFile(ES_MAPPING_PATH)
     if (mappingJson) {
       // this sets our custom mapping for our specific type in the index just created above
-      indexOps.preparePutMapping(indexName).setSource(mappingJson).setType(typeName).execute().actionGet()
+      indexOps.preparePutMapping(indexName).setSource(mappingJson).setType(settings.typeName).execute().actionGet()
     }
   }
 
@@ -142,7 +140,7 @@ class FrioLoader {
       else                                  // else flush and close bulk processor
         bulker.close()
     }
-    node.close()
+    client.close()
   }
 
 }
