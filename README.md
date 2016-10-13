@@ -4,7 +4,7 @@ This is a public code repository of the Computational Language Understanding (CL
 
 Authors: Tom Hicks.
 
-Purpose: Converts triples of FRIES-format JSON files, containing REACH results, into a simpler
+Purpose: Converts triples of FRIES-format JSON files, containing Reach results, into a simpler
 format for ingestion into an ElasticSearch datastore, where they will be later queried.
 
 ## Installation
