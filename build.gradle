@@ -33,7 +33,7 @@ version = '2.4.1'
 
 shadowJar {
   manifest {
-    archiveName = "${rootProject.name}-${version}.jar"
+    archiveName = "friolo-${version}.jar"
     mergeServiceFiles()
     attributes('Project-Version': version,
                'Built-By': System.getProperty('user.name'),
