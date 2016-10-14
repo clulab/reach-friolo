@@ -2,14 +2,14 @@
 
 This is a public code repository of the Computational Language Understanding (CLU) Lab led by [Mihai Surdeanu](http://surdeanu.info/mihai/) at [University of Arizona](http://www.arizona.edu).
 
-Authors: Tom Hicks.
+Author: [Tom Hicks](https://github.com/hickst)
 
 Purpose: Converts triples of FRIES-format JSON files, containing Reach results, into a simpler
-format for ingestion into an ElasticSearch datastore, where they will be later queried.
+format for ingestion into an ElasticSearch datastore, from which they will be later queried.
 
 ## Installation
 
-This software requires Java 1.8, Gradle 2.5, Groovy 2.3.x+, and ElasticSearch 1.7.1.
+This software requires Java 1.8, Gradle 2.7, Groovy 2.4.x+, and ElasticSearch 2.4.1.
 An accessible ElasticSearch cluster must be running simultaneously with this program.
 
 To build the standalone JAR file in the build/libs subdirectory:
@@ -21,7 +21,7 @@ To build the standalone JAR file in the build/libs subdirectory:
 To run the JAR file:
 
 ```
-   > java -jar friolo-1.0.0.jar -v /input/dir/path
+   > java -jar friolo-2.5.0.jar -v /input/dir/path
 ```
 
 Run Options:
