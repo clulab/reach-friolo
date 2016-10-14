@@ -7,7 +7,7 @@ import groovy.json.*
  * Class to transform and load REACH results files, in Fries Output JSON format, into a
  * format more suitable for searching entity and event interconnections via ElasticSearch.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Update for mixed entity and context frames, renamed fields.
+ *   Last Modified: Rename event subtype field.
  */
 class FrioFormer {
 
@@ -98,9 +98,9 @@ class FrioFormer {
     // handle activation or regulation
     if ((evType == 'activation') || (evType == 'regulation')) {
       def patient = getControlled(tjMap, event)
-      if (patient && patient?.evSubtype) {    // kludge: retrieve the controlled events subtype
-        predMap['evSubtype'] = patient.evSubtype // transfer it to the predicate where it belongs
-        patient.remove('evSubtype')          // delete it from the patient where it was stashed
+      if (patient && patient?.subtype) {    // kludge: retrieve the controlled events subtype
+        predMap['subtype'] = patient.subtype // transfer it to the predicate where it belongs
+        patient.remove('subtype')          // delete it from the patient where it was stashed
       }
       def agents = getControllers(tjMap, event)
       agents.each { agent ->
@@ -257,7 +257,7 @@ class FrioFormer {
       def ctrldEntity = getThemes(tjMap, ctrldEvent)?.getAt(0) // should be just 1 theme arg
       if (!ctrldEntity) return null               // bad nesting: exit out now
       if (ctrldEvent?.subtype)                    // stash the controlled event subtype
-        ctrldEntity['evSubtype'] = ctrldEvent.subtype // and return it in the entity
+        ctrldEntity['subtype'] = ctrldEvent.subtype // and return it in the entity
       return ctrldEntity                    // return the nested entity
     }
     else                                    // else it is a directly controlled entity
