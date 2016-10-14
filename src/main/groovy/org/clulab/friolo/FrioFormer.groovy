@@ -7,7 +7,7 @@ import groovy.json.*
  * Class to transform and load REACH results files, in Fries Output JSON format, into a
  * format more suitable for searching entity and event interconnections via ElasticSearch.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Convert to agent/predicate/patient.
+ *   Last Modified: Update for mixed entity and context frames, renamed fields.
  */
 class FrioFormer {
 
@@ -128,12 +128,18 @@ class FrioFormer {
   Map extractEntityMentions (tjMap) {
     log.trace("(FrioFormer.extractEntityMentions):")
     return tjMap.entities.frames.collectEntries { frame ->
-      def frameId = frame['frame-id']
-      def frameMap = [ 'eText': frame['text'], 'eType': frame['type'] ]
-      def namespaceInfo = extractNamespaceInfo(frame.xrefs)
-      if (namespaceInfo)
-        frameMap << namespaceInfo
-      [ (frameId): frameMap ]
+      if (frame['frame-type'] == 'entity-mention') {
+        def frameId = frame['frame-id']
+        def frameMap = [ 'eText': frame['text'], 'eType': frame['type'] ]
+        def frameXrefs = frame['xrefs']
+        if (frameXrefs) {
+          def namespaceInfo = extractNamespaceInfo(frame.xrefs)
+          if (namespaceInfo)
+            frameMap << namespaceInfo
+        }
+        [ (frameId): frameMap ]
+      }
+      else [:]                              // else frame was not an entity mention
     }
   }
 
@@ -163,7 +169,7 @@ class FrioFormer {
 
   def extractArgInfo (argList) {
     return argList.collect { arg ->
-      def aMap = [ 'role': arg['argument-label'],
+      def aMap = [ 'role': arg['type'],
                    'text': arg['text'],
                    'argType': arg['argument-type'] ]
       if (arg.get('arg'))
