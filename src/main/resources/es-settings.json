@@ -6,18 +6,24 @@
         "pattern": "_"
       }
     },
+    "filter": {
+      "token_length": {
+        "type": "length",
+        "min": 2
+      }
+    },
     "analyzer": {
       "lowerWS": {
         "type": "custom",
         "tokenizer": "whitespace",
-        "filter": ["lowercase"]
+        "filter": [ "token_length", "lowercase" ]
       }
     },
     "analyzer": {
       "PMfilename": {
         "type": "custom",
         "tokenizer": "underscore_tokenizer",
-        "filter": ["lowercase"]
+        "filter": [ "token_length", "lowercase" ]
       }
     }
   }
