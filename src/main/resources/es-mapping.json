@@ -43,7 +43,7 @@
         "properties": {
           "rule": {
             "type": "string",
-            "analyzer": "simple"
+            "index": "not_analyzed"
           },
           "sign": {
             "type": "string",
