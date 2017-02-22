@@ -25,7 +25,7 @@
           },
           "eText": {
             "type": "string",
-            "analyzer": "lowerWS",
+            "analyzer": "lowerNoTok",
             "fields": {
               "raw": {
                 "type": "string",
@@ -71,7 +71,7 @@
           },
           "eText": {
             "type": "string",
-            "analyzer": "lowerWS",
+            "analyzer": "lowerNoTok",
             "fields": {
               "raw": {
                 "type": "string",
