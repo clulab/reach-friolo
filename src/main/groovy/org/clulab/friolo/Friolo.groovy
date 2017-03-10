@@ -13,7 +13,7 @@ import groovy.util.CliBuilder
  * a format, ingestable by ElasticSearch, for searching entity and event interconnections.
  *
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Make file processing return basename for error handling.
+ *   Last Modified: Add debug flag for textual debugging output.
  */
 class Friolo implements FilenameFilter {
 
@@ -37,6 +37,8 @@ class Friolo implements FilenameFilter {
     cli.width = 100                         // increase usage message width
     cli.with {
       h(longOpt:  'help',      'Show usage information.')
+      d(longOpt:  'debug',
+        'Print debugging output in addition to normal processing (default false).')
       b(longOpt:  'bulk',
         'Use bulk loading with N additional processes (default: no bulk loading).',
         args: 1, argName: 'N')
@@ -69,6 +71,7 @@ class Friolo implements FilenameFilter {
                      'bulkConcurrency': (options.b ?: 0) as Integer,
                      'bulkWaitMinutes': 1,
                      'mapFilenames': options.m ?: false,
+                     'debug': options.d ?: false,
                      'verbose': options.v ?: false ]
 
     // if mapping filenames, then load the table of filenames and ids
