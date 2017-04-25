@@ -44,7 +44,9 @@ shadowJar {
   }
 }
 
-task elasticStatus << {
-  println(['curl', 'http://localhost:9200/?pretty'].execute().text)
-  println(['curl', '-XGET', 'http://localhost:9200/_count?pretty', '-d', '{ "query": { "match_all": {}}}'].execute().text)
+task elasticStatus {
+  doLast {
+    println(['curl', 'http://localhost:9200/?pretty'].execute().text)
+    println(['curl', '-XGET', 'http://localhost:9200/_count?pretty', '-d', '{ "query": { "match_all": {}}}'].execute().text)
+  }
 }
