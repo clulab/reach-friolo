@@ -7,13 +7,14 @@ import groovy.json.*
  * Class to transform and load REACH results files, in Fries Output JSON format, into a
  * format more suitable for searching entity and event interconnections via ElasticSearch.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Backport frext fixes and enhancements.
+ *   Last Modified: Handle role label rename. Expand interesting events. Rename cross-refs to links.
  */
 class FrioFormer {
 
   static final Logger log = LogManager.getLogger(FrioFormer.class.getName());
 
-  static final List INTERESTING_TYPES = [ 'activation', 'complex-assembly', 'regulation' ]
+  static final List INTERESTING_TYPES =
+    [ 'activation', 'complex-assembly', 'protein-modification', 'regulation', 'translocation' ]
 
   Map settings                              // class global settings
 
@@ -66,7 +67,7 @@ class FrioFormer {
 
   /** Create and return new JSON from the given type-to-json map for the specified document. */
   def convertJson (docId, friesMap) {
-    log.trace("(FrioFormer.convertJson): docId=${docId}, friesMap=${friesMap}")
+    log.trace("(FrioFormer.convertJson): docId=${docId}")
     def convertedEvents = []
     friesMap.events.each { id, event ->
       def evType = event.type ?: 'UNKNOWN'
@@ -117,6 +118,7 @@ class FrioFormer {
         patient.remove('subtype')           // delete it from the patient where it was stashed
       }
 
+      // split multiple controllers into multiple controlling events
       def agents = getControllers(friesMap, event)
       agents.each { agent ->
         def evMap = [ 'docId': docId,
@@ -134,6 +136,8 @@ class FrioFormer {
     }
 
     // handle complex-assembly (aka binding)
+    // NB: only handles bindings w/ exactly 2 participants
+    // NB: creates two events from each binary binding (i.e., A -> B and B -> A)
     else if (evType == 'complex-assembly') {
       def themes = getThemes(friesMap, event)
       // def sites = getSites(friesMap, event)
@@ -256,13 +260,14 @@ class FrioFormer {
 
   def extractArgInfo (argList) {
     return argList.collect { arg ->
-      def aMap = [ 'role': arg['type'],
+      def role = arg['type'] ?: arg['argument-label'] // find role: new label or old label
+      def aMap = [ 'role': role,
                    'text': arg['text'],
                    'argType': arg['argument-type'] ]
-      if (arg.get('arg'))
-        aMap << ['xref': arg['arg']]
-      if (arg.get('args'))
-        aMap['xrefs'] = arg.get('args')
+      if (arg.get('arg'))                   // arguments will have a link called 'arg'
+        aMap << ['link': arg['arg']]
+      if (arg.get('args'))                  // or a map of labeled links called 'args'
+        aMap['links'] = arg.get('args')
       return aMap
     }
   }
@@ -284,6 +289,37 @@ class FrioFormer {
   }
 
 
+  /** Return a list of entity maps by dereferencing the entity cross-references in
+      the links (args fields) map of the given argument-type=complex map. */
+  def derefComplex (friesMap, arg) {
+    if (!arg) return null                   // sanity check
+    def complexLinks = getComplexLinks(friesMap, arg)
+    return complexLinks.findResults { link ->
+      lookupEntity(friesMap, link)
+    }
+  }
+
+  /** Return a list of entity maps from the arguments in the given event arguments list. */
+  def derefEntities (friesMap, argsList) {
+    argsList.findResults { arg ->
+      lookupEntity(friesMap, getEntityLink(arg))
+    }
+  }
+
+  /** Return an entity map from the given entity argument map. */
+  def derefEntity (friesMap, arg) {
+    if (!arg) return null                   // sanity check
+    lookupEntity(friesMap, getEntityLink(arg))
+  }
+
+  /** Return an event map by dereferencing the event cross-reference in
+      the link (arg field) of the given argument-type=event map. */
+  def derefEvent (friesMap, arg) {
+    if (!arg) return null                   // sanity check
+    lookupEvent(friesMap, getEventLink(arg))
+  }
+
+
   /** Return a single map of salient properties from the named arguments of the given event. */
   def getArgByRole (event, role) {
     def argsWithRoles = getArgsByRole(event, role)
@@ -295,37 +331,19 @@ class FrioFormer {
     return event.args.findResults { if (it?.role == role) it }
   }
 
-  /** Return a list of entity maps from the arguments in the given event arguments list. */
-  def derefEntities (friesMap, argsList) {
-    argsList.findResults { arg ->
-      lookupEntity(friesMap, getEntityXref(arg))
-    }
+
+  /** Check that the given argument-type entity map refers to an entity and return
+      the entity cross-reference link string it contains, or else null. */
+  def getEntityLink (arg) {
+    if (!arg) return null                   // sanity check
+    return ((arg?.argType == 'entity') && arg?.link) ? arg.link : null
   }
 
-  /** Return an entity map from the given entity argument map. */
-  def derefEntity (friesMap, arg) {
+  /** Check that the given argument-type entity map refers to an event and return
+      the event cross-reference link string it contains, or else null. */
+  def getEventLink (arg) {
     if (!arg) return null                   // sanity check
-    lookupEntity(friesMap, getEntityXref(arg))
-  }
-
-  /** Return an event map from the given event argument map. */
-  def derefEvent (friesMap, arg) {
-    if (!arg) return null                   // sanity check
-    lookupEvent(friesMap, getEventXref(arg))
-  }
-
-  /** Check that the given argument map refers to an entity and return the
-      entity cross-reference it contains, or else null. */
-  def getEntityXref (arg) {
-    if (!arg) return null                   // sanity check
-    return ((arg?.argType == 'entity') && arg?.xref) ? arg.xref : null
-  }
-
-  /** Check that the given argument map refers to an event and return the
-      event cross-reference it contains, or else null. */
-  def getEventXref (arg) {
-    if (!arg) return null                   // sanity check
-    return ((arg?.argType == 'event') && arg?.xref) ? arg.xref : null
+    return ((arg?.argType == 'event') && arg?.link) ? arg.link : null
   }
 
   /** Return a controlled entity map from the controlled argument of the given event. */
@@ -346,18 +364,19 @@ class FrioFormer {
       return derefEntity(friesMap, ctrld)
   }
 
-  /** Return a list of controller entity maps from the controller argument of the given event. */
+  /** Return a list of maps from the controller argument of
+      the given parent event. Returns null if no controller argument found. */
   def getControllers (friesMap, event) {
     log.trace("(getControllers): event=${event}")
-    def ctlr = getArgByRole(event, 'controller') // should be just 1 controller arg
-    if (ctlr)  {
-      if (ctlr.argType == 'complex') {
-        def themeRefs = getXrefsByPrefix(ctlr?.xrefs, 'theme')
-        return themeRefs.findResults { xref -> lookupEntity(friesMap, xref) }
-      }
-      else                                  // else it is a single controller event
-        return derefEntities(friesMap, [ctlr])
+    def cntlr = getArgByRole(event, 'controller') // should be just 1 controller arg
+    if (!cntlr) return null                 // no controller: exit out now
+
+    if (cntlr.argType == 'complex') {
+      def themeLinks = getLinksByPrefix(cntlr?.links, 'theme')
+      return themeLinks.findResults { link -> lookupEntity(friesMap, link) }
     }
+    else                                  // else it is a single controller event
+      return derefEntities(friesMap, [cntlr])
   }
 
   /** Return a list of entity maps from the destination arguments of the given event. */
@@ -365,6 +384,15 @@ class FrioFormer {
     log.trace("(getDestinations): event=${event}")
     def destArgs = getArgsByRole(event, 'destination')
     return derefEntities(friesMap, destArgs)
+  }
+
+  /** Return a list of mention cross references from the arguments in the given
+      cross reference map whose keys begins with the given prefix string. */
+  def getLinksByPrefix (linksMap, prefix) {
+    if (!linksMap) return null              // sanity check
+    return linksMap.findResults { linkRole, link ->
+      if (linkRole.startsWith(prefix))  return link
+    }
   }
 
   /** Return a list of entity maps from the site arguments of the given event. */
@@ -389,31 +417,22 @@ class FrioFormer {
   }
 
 
-  /** Return a list of mention cross references from the arguments in the given
-      cross reference map whose keys begins with the given prefix string. */
-  def getXrefsByPrefix (xrefsMap, prefix) {
-    if (!xrefsMap) return null              // sanity check
-    return xrefsMap.findResults { xrRole, xref ->
-      if (xrRole.startsWith(prefix))  return xref
-    }
-  }
-
   /** Return the entity map referenced by the given entity cross-reference or null. */
-  def lookupEntity (friesMap, xref) {
-    if (!xref) return null                  // sanity check
-    return friesMap['entities'].get(xref)
+  def lookupEntity (friesMap, link) {
+    if (!link) return null                  // sanity check
+    return friesMap['entities'].get(link)
   }
 
   /** Return the event map referenced by the given event cross-reference or null. */
-  def lookupEvent (friesMap, xref) {
-    if (!xref) return null                  // sanity check
-    return friesMap['events'].get(xref)
+  def lookupEvent (friesMap, link) {
+    if (!link) return null                  // sanity check
+    return friesMap['events'].get(link)
   }
 
   /** Return a map of salient properties from the given entity cross-reference. */
-  def lookupSentence (friesMap, sentXref) {
-    if (!sentXref) return null              // propogate null
-    return friesMap['sentences'].get(sentXref)
+  def lookupSentence (friesMap, sentenceLink) {
+    if (!sentenceLink) return null          // propogate null
+    return friesMap['sentences'].get(sentenceLink)
   }
 
 }
