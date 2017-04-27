@@ -29,7 +29,7 @@ tasks.withType(GroovyCompile) {
 
 mainClassName = 'org.clulab.friolo.Friolo'
 sourceCompatibility = 1.8
-version = '2.8.0'
+version = '2.8.1'
 
 shadowJar {
   manifest {

@@ -7,7 +7,7 @@ import groovy.json.*
  * Class to transform and load REACH results files, in Fries Output JSON format, into a
  * format more suitable for searching entity and event interconnections via ElasticSearch.
  *   Written by: Tom Hicks. 9/10/2015.
- *   Last Modified: Handle role label rename. Expand interesting events. Rename cross-refs to links.
+ *   Last Modified: Fix: missing sentences in some event types.
  */
 class FrioFormer {
 
@@ -91,12 +91,12 @@ class FrioFormer {
 
     // properties for the predicate portion of the output format
     def evType = event.type
-    def predMap = [ 'type': evType, 'sign': event.sign ]
+    def predMap = [ 'type': evType,
+                    'sign': event.sign ]
     if (event['subtype']) predMap['sub_type'] = event.subtype
     if (event['regtype']) predMap['regulation_type'] = event.regtype
     if (event['is-direct']) predMap['is-direct'] = true
     if (event['is-hypothesis']) predMap['is-hypothesis'] = true
-    if (event.sign == 'negative') predMap['negative_information'] = true
     if (event?.rule) predMap <<  ['rule': event.rule]
 
     // properties for the location portion of the output format
@@ -110,7 +110,7 @@ class FrioFormer {
       // special check: only handle regulations when controlled is a modification
       def pSubtype = (patient) ? patient?.subtype : null
       if (evType == 'regulation' && (pSubtype != 'protein-modification'))
-        return newEvents                    // exit out now
+        return newEvents                    // exit out now with no results
 
       // kludge: flatten the nested event using the previously modified controlled theme
       if (patient && pSubtype) {            // retrieve the controlled event subtype and
@@ -122,10 +122,9 @@ class FrioFormer {
       def agents = getControllers(friesMap, event)
       agents.each { agent ->
         def evMap = [ 'docId': docId,
+                      'loc': locMap,
                       'p': predMap,
-                      'a': agent,
-                      // 's': event.sentence ?: '',
-                      'loc': locMap ]
+                      'a': agent ]
         if (patient) {
           evMap['t'] = patient
           // def sites = getSites(friesMap, event)
@@ -143,18 +142,16 @@ class FrioFormer {
       // def sites = getSites(friesMap, event)
       if (themes.size() == 2) {
         def aToB = [ 'docId': docId,
-                     'p': predMap,
                      'loc': locMap,
-                     // 's': event.sentence ?: '',
                      'a': themes[0],
+                     'p': predMap,
                      't': themes[1] ]
         // if (sites) aToB['sites'] = sites
         newEvents << aToB
         def bToA = [ 'docId': docId,
-                     'p': predMap,
                      'loc': locMap,
-                     // 's': event.sentence ?: '',
                      'a': themes[1],
+                     'p': predMap,
                      't': themes[0] ]
         // if (sites) bToA['sites'] = sites
         newEvents << bToA
@@ -168,10 +165,11 @@ class FrioFormer {
       def destArg = getDestinations(friesMap, event)?.getAt(0) // should be just 1 dest arg
       // def sites = getSites(friesMap, event)
       if (patient && destArg) {
-        def evMap = [ 't': patient,
-                      'to_loc': destArg,
-                       // 's': event.sentence ?: '',
-                      'p': predMap ]
+        def evMap = [ 'docId': docId,
+                      'loc': locMap,
+                      'p': predMap,
+                      't': patient,
+                      'to_loc': destArg ]
         if (srcArg) evMap['from_loc'] = srcArg
         // if (sites) evMap['sites'] = sites
         newEvents << evMap
@@ -184,9 +182,10 @@ class FrioFormer {
       // def sites = getSites(friesMap, event)
       if (themes) {
         // a modification event will have exactly one theme
-        def evMap = [ 't': themes[0],
-                       // 's': event.sentence ?: '',
-                      'p': predMap ]
+        def evMap = [ 'docId': docId,
+                      'loc': locMap,
+                      'p': predMap,
+                      't': themes[0] ]
         // if (sites) evMap['sites'] = sites
         newEvents << evMap
       }
